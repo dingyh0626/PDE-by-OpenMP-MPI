@@ -13,7 +13,7 @@
 #include <getopt.h>
 
 const double eps = 0.01;
-const int save = 0;
+const int save = 1;
 /**
  * f(x,y)=0
  * 100-200x, y=0
