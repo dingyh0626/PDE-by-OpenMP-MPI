@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.12)
+project(pde)
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fopenmp")
+set(CMAKE_C_COMPILER /usr/local/bin/mpicc)
+add_executable(pde main.c pde.h)
