@@ -1,7 +1,3 @@
-//
-// Created by 丁雨晖 on 2018/10/18.
-//
-
 #ifndef PDE_H
 #define PDE_H
 #include <stdio.h>
@@ -13,7 +9,7 @@
 #include <getopt.h>
 
 const double eps = 0.01;
-const int save = 1;
+const int save = 0;
 /**
  * f(x,y)=0
  * 100-200x, y=0
@@ -30,6 +26,7 @@ void paralleled_method(int N, double(*func)(double, double), const char *path, i
     double *u, *f, dm, dm_inner, temp, d;
     double h = 1. / (N - 1);
     double tstart;
+    int k = 0;
     omp_lock_t dmax_lock;
     omp_init_lock(&dmax_lock);
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
@@ -95,10 +92,11 @@ void paralleled_method(int N, double(*func)(double, double), const char *path, i
     MPI_Barrier(MPI_COMM_WORLD);
     tstart = MPI_Wtime();
     do {
+        k += 1;
         if (my_rank % 2) {
             a = my_rank != num_procs - 1;
             dm = -1;
-#pragma omp parallel for private(j, temp, dm_inner, d) shared(u, dm, f)
+#pragma omp parallel for private(j, i, temp, dm_inner, d) shared(u, dm, f)
             for (j = 1; j < strip_size + a; j += 2) {
                 dm_inner = -1;
                 for (i = 1; i < N - 1; i++) {
@@ -117,7 +115,7 @@ void paralleled_method(int N, double(*func)(double, double), const char *path, i
                 omp_unset_lock(&dmax_lock);
             }
 
-#pragma omp parallel for private(j, temp, dm_inner, d) shared(u, dm, f)
+#pragma omp parallel for private(j, i, temp, dm_inner, d) shared(u, dm, f)
             for (j = 2; j < strip_size + a; j += 2) {
                 dm_inner = -1;
                 for (i = 1; i < N - 1; i++) {
@@ -156,7 +154,7 @@ void paralleled_method(int N, double(*func)(double, double), const char *path, i
                 MPI_Recv(&u[(strip_size + a) * N], N, MPI_DOUBLE, my_rank + 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             }
             dm = -1;
-#pragma omp parallel for private(j, temp, dm_inner, d) shared(u, dm, f)
+#pragma omp parallel for private(j, i, temp, dm_inner, d) shared(u, dm, f)
             for (j = 1; j < strip_size + a; j += 2) {
                 dm_inner = -1;
                 for (i = 1; i < N - 1; i++) {
@@ -174,7 +172,7 @@ void paralleled_method(int N, double(*func)(double, double), const char *path, i
                 }
                 omp_unset_lock(&dmax_lock);
             }
-#pragma omp parallel for private(j, temp, dm_inner, d) shared(u, dm, f)
+#pragma omp parallel for private(j, i, temp, dm_inner, d) shared(u, dm, f)
             for (j = 2; j < strip_size + a; j += 2) {
                 dm_inner = -1;
                 for (i = 1; i < N - 1; i++) {
@@ -217,6 +215,7 @@ void paralleled_method(int N, double(*func)(double, double), const char *path, i
     MPI_Barrier(MPI_COMM_WORLD);
     if (my_rank == 0) {
         printf("Duration: %.3fms\n", 1e3 * (MPI_Wtime() - tstart));
+        printf("Iterations: %d\n", k);
         if (save) {
             FILE *fp = fopen(path, "wb");
             fwrite(u, sizeof(double), N * N, fp);
@@ -228,7 +227,7 @@ void thread_method(int N, double(*func)(double, double), const char *path, int s
 {
     omp_lock_t dmax_lock;
     omp_init_lock(&dmax_lock);
-    int i, j, k;
+    int i, j, k = 0;
     double dmax, dm, d;
     double temp;
     double tstart;
@@ -250,15 +249,14 @@ void thread_method(int N, double(*func)(double, double), const char *path, int s
         u[j * N] = 100. - 200. * h * j;
         u[j * N + N - 1] = -100 + 200 * h * j;
     }
-
     tstart = MPI_Wtime();
     do {
-//        k += 1;
+        k += 1;
         dmax = -1.;
 
 
 
-#pragma omp parallel for private(j, temp, dm, d) shared(u, dmax, f)
+#pragma omp parallel for private(j, i, temp, dm, d) shared(u, dmax, f)
         for (j = 1; j < N - 1; j+=2) {
             dm = -1;
             for (i = 1; i < N - 1; i++) {
@@ -277,7 +275,7 @@ void thread_method(int N, double(*func)(double, double), const char *path, int s
             }
             omp_unset_lock(&dmax_lock);
         }
-#pragma omp parallel for private(j, temp, dm, d) shared(u, dmax, f)
+#pragma omp parallel for private(j, i, temp, dm, d) shared(u, dmax, f)
         for (j = 2; j < N - 1; j+=2) {
             dm = -1;
             for (i = 1; i < N - 1; i++) {
@@ -300,6 +298,7 @@ void thread_method(int N, double(*func)(double, double), const char *path, int s
 
     } while (dmax > eps);
     printf("Duration: %.3fms\n", 1e3*(MPI_Wtime() - tstart));
+    printf("Iterations: %d\n", k);
     if (save) {
         FILE *fp = fopen(path, "wb");
         fwrite(u, sizeof(double), N * N, fp);
@@ -310,7 +309,7 @@ void thread_method(int N, double(*func)(double, double), const char *path, int s
 
 void sequential_method(int N, double(*func)(double, double), const char *path, int save)
 {
-    int i, j, k;
+    int i, j, k = 0;
     double dmax, dm, d;
     double temp;
     double tstart;
@@ -351,6 +350,7 @@ void sequential_method(int N, double(*func)(double, double), const char *path, i
         }
     } while (dmax > eps);
     printf("Duration: %.3fms\n", 1e3*(MPI_Wtime() - tstart));
+    printf("Iterations: %d\n", k);
     if (save) {
         FILE *fp = fopen(path, "wb");
         fwrite(u, sizeof(double), N * N, fp);
@@ -362,10 +362,10 @@ void pde(int argc, char *argv[], double(*func)(double, double))
 {
 
 
-    const char *path = "/Users/dyh/PycharmProjects/pde/u.data";
+    const char *path = "u.data";
     int opt = 0;
     int N = 100;
-    int t = omp_get_max_threads();
+    int t = 1;
 //    int t = 0;
     int method = 0;
     const char *short_opts = "o:g:t:m:";
