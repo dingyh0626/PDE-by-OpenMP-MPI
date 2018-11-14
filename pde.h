@@ -9,7 +9,10 @@
 #include <getopt.h>
 
 const double eps = 0.01;
-const int save = 0;
+const int save = 1;
+#define TAG_PREV2NEXT 0
+#define TAG_NEXT2PREV 1
+#define TAG_REDUCE 2
 /**
  * f(x,y)=0
  * 100-200x, y=0
@@ -93,126 +96,68 @@ void paralleled_method(int N, double(*func)(double, double), const char *path, i
     tstart = MPI_Wtime();
     do {
         k += 1;
-        if (my_rank % 2) {
-            a = my_rank != num_procs - 1;
-            dm = -1;
+        a = !(my_rank == 0 || my_rank == num_procs - 1);
+        a = num_procs == 1 ? -1 : a;
+        dm = -1;
 #pragma omp parallel for private(j, i, temp, dm_inner, d) shared(u, dm, f, a, N, strip_size, h)
-            for (j = 1; j < strip_size + a; j += 2) {
-                dm_inner = -1;
-                for (i = 1; i < N - 1; i++) {
-                    temp = u[j * N + i];
-                    u[j * N + i] = 0.25 * (u[j * N + i - 1] + u[j * N + i + 1]
-                                           + u[(j - 1) * N + i] + u[(j + 1) * N + i] - h * h * f[j * N + i]);
-                    d = fabs(u[j * N + i] - temp);
-                    if (d > dm_inner) {
-                        dm_inner = d;
-                    }
+        for (j = 1; j < strip_size + a; j += 2) {
+            dm_inner = -1;
+            for (i = 1; i < N - 1; i++) {
+                temp = u[j * N + i];
+                u[j * N + i] = 0.25 * (u[j * N + i - 1] + u[j * N + i + 1]
+                                       + u[(j - 1) * N + i] + u[(j + 1) * N + i] - h * h * f[j * N + i]);
+                d = fabs(u[j * N + i] - temp);
+                if (d > dm_inner) {
+                    dm_inner = d;
                 }
-                omp_set_lock(&dmax_lock);
-                if (dm_inner > dm) {
-                    dm = dm_inner;
-                }
-                omp_unset_lock(&dmax_lock);
             }
-
+            omp_set_lock(&dmax_lock);
+            if (dm_inner > dm) {
+                dm = dm_inner;
+            }
+            omp_unset_lock(&dmax_lock);
+        }
 #pragma omp parallel for private(j, i, temp, dm_inner, d) shared(u, dm, f, a, N, strip_size, h)
-            for (j = 2; j < strip_size + a; j += 2) {
-                dm_inner = -1;
-                for (i = 1; i < N - 1; i++) {
-                    temp = u[j * N + i];
-                    u[j * N + i] = 0.25 * (u[j * N + i - 1] + u[j * N + i + 1]
-                                           + u[(j - 1) * N + i] + u[(j + 1) * N + i] - h * h * f[j * N + i]);
-                    d = fabs(u[j * N + i] - temp);
-                    if (d > dm_inner) {
-                        dm_inner = d;
-                    }
+        for (j = 2; j < strip_size + a; j += 2) {
+            dm_inner = -1;
+            for (i = 1; i < N - 1; i++) {
+                temp = u[j * N + i];
+                u[j * N + i] = 0.25 * (u[j * N + i - 1] + u[j * N + i + 1]
+                                       + u[(j - 1) * N + i] + u[(j + 1) * N + i] - h * h * f[j * N + i]);
+                d = fabs(u[j * N + i] - temp);
+                if (d > dm_inner) {
+                    dm_inner = d;
                 }
-                omp_set_lock(&dmax_lock);
-                if (dm_inner > dm) {
-                    dm = dm_inner;
-                }
-                omp_unset_lock(&dmax_lock);
             }
-
-            if (my_rank != num_procs - 1) {
-                MPI_Sendrecv(&u[(strip_size + a - 1) * N], N, MPI_DOUBLE, my_rank + 1, 0, &u[(strip_size + a) * N], N, MPI_DOUBLE, my_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-//                MPI_Send(&u[(strip_size + a - 1) * N], N, MPI_DOUBLE, my_rank + 1, 0, MPI_COMM_WORLD);
-//                MPI_Recv(&u[(strip_size + a) * N], N, MPI_DOUBLE, my_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
+            omp_set_lock(&dmax_lock);
+            if (dm_inner > dm) {
+                dm = dm_inner;
             }
-            MPI_Sendrecv(&u[N], N, MPI_DOUBLE, my_rank - 1, 1, u, N, MPI_DOUBLE, my_rank - 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-//            MPI_Send(&u[N], N, MPI_DOUBLE, my_rank - 1, 1, MPI_COMM_WORLD);
-//            MPI_Recv(u, N, MPI_DOUBLE, my_rank - 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        } else {
-            a = !(my_rank == 0 || my_rank == num_procs - 1);
-            a = (my_rank == 0 && my_rank == num_procs - 1) ? -1 : a;
-
-
-            dm = -1;
-#pragma omp parallel for private(j, i, temp, dm_inner, d) shared(u, dm, f, a, N, strip_size, h)
-            for (j = 1; j < strip_size + a; j += 2) {
-                dm_inner = -1;
-                for (i = 1; i < N - 1; i++) {
-                    temp = u[j * N + i];
-                    u[j * N + i] = 0.25 * (u[j * N + i - 1] + u[j * N + i + 1]
-                                           + u[(j - 1) * N + i] + u[(j + 1) * N + i] - h * h * f[j * N + i]);
-                    d = fabs(u[j * N + i] - temp);
-                    if (d > dm_inner) {
-                        dm_inner = d;
-                    }
-                }
-                omp_set_lock(&dmax_lock);
-                if (dm_inner > dm) {
-                    dm = dm_inner;
-                }
-                omp_unset_lock(&dmax_lock);
-            }
-#pragma omp parallel for private(j, i, temp, dm_inner, d) shared(u, dm, f, a, N, strip_size, h)
-            for (j = 2; j < strip_size + a; j += 2) {
-                dm_inner = -1;
-                for (i = 1; i < N - 1; i++) {
-                    temp = u[j * N + i];
-                    u[j * N + i] = 0.25 * (u[j * N + i - 1] + u[j * N + i + 1]
-                                           + u[(j - 1) * N + i] + u[(j + 1) * N + i] - h * h * f[j * N + i]);
-                    d = fabs(u[j * N + i] - temp);
-                    if (d > dm_inner) {
-                        dm_inner = d;
-                    }
-                }
-                omp_set_lock(&dmax_lock);
-                if (dm_inner > dm) {
-                    dm = dm_inner;
-                }
-                omp_unset_lock(&dmax_lock);
-            }
-            if (my_rank != 0) {
-                MPI_Sendrecv(&u[N], N, MPI_DOUBLE, my_rank - 1, 0, u, N, MPI_DOUBLE, my_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-//                MPI_Recv(u, N, MPI_DOUBLE, my_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            }
-//            if (my_rank != num_procs - 1) {
-//                MPI_Recv(&u[(strip_size + a) * N], N, MPI_DOUBLE, my_rank + 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-//            }
-//            if (my_rank != 0) {
-//                MPI_Send(&u[N], N, MPI_DOUBLE, my_rank - 1, 0, MPI_COMM_WORLD);
-//            }
-            if (my_rank != num_procs - 1) {
-                MPI_Sendrecv(&u[(strip_size + a - 1) * N], N, MPI_DOUBLE, my_rank + 1, 1, &u[(strip_size + a) * N], N, MPI_DOUBLE, my_rank + 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            omp_unset_lock(&dmax_lock);
+        }
+        if (num_procs != 1) {
+            if (my_rank != num_procs - 1 && my_rank != 0) {
+                MPI_Sendrecv(&u[(strip_size + a - 1) * N], N, MPI_DOUBLE, my_rank + 1, TAG_PREV2NEXT, u, N, MPI_DOUBLE, my_rank - 1, TAG_PREV2NEXT, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Sendrecv(&u[N], N, MPI_DOUBLE, my_rank - 1, TAG_NEXT2PREV, &u[(strip_size + a) * N], N, MPI_DOUBLE, my_rank + 1, TAG_NEXT2PREV, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            } else if (my_rank == num_procs - 1) {
+                MPI_Sendrecv(&u[N], N, MPI_DOUBLE, my_rank - 1, TAG_NEXT2PREV, u, N, MPI_DOUBLE, my_rank - 1, TAG_PREV2NEXT, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            } else {
+                MPI_Sendrecv(&u[(strip_size + a - 1) * N], N, MPI_DOUBLE, my_rank + 1, TAG_PREV2NEXT, &u[(strip_size + a) * N], N, MPI_DOUBLE, my_rank + 1, TAG_NEXT2PREV, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             }
         }
-
         MPI_Reduce(&dm, &dmax, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
         MPI_Bcast(&dmax, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     } while (dmax > eps);
     if (my_rank == 0) {
         for (i = 1; i < num_procs; i++) {
             if (i == num_procs - 1) {
-                MPI_Recv(&u[N * i * strip_size], N * strip_size2, MPI_DOUBLE, i, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Recv(&u[N * i * strip_size], N * strip_size2, MPI_DOUBLE, i, TAG_REDUCE, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             } else {
-                MPI_Recv(&u[N * i * strip_size], N * strip_size1, MPI_DOUBLE, i, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Recv(&u[N * i * strip_size], N * strip_size1, MPI_DOUBLE, i, TAG_REDUCE, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             }
         }
     } else {
-        MPI_Send(&u[N], N * strip_size, MPI_DOUBLE, 0, 2, MPI_COMM_WORLD);
+        MPI_Send(&u[N], N * strip_size, MPI_DOUBLE, 0, TAG_REDUCE, MPI_COMM_WORLD);
     }
     MPI_Barrier(MPI_COMM_WORLD);
     if (my_rank == 0) {
@@ -362,13 +307,10 @@ void sequential_method(int N, double(*func)(double, double), const char *path, i
 
 void pde(int argc, char *argv[], double(*func)(double, double))
 {
-
-
     const char *path = "u.data";
     int opt = 0;
     int N = 100;
     int t = 1;
-//    int t = 0;
     int method = 0;
     const char *short_opts = "o:g:t:m:";
     const struct option long_opts[] = {
@@ -409,8 +351,6 @@ void pde(int argc, char *argv[], double(*func)(double, double))
             sequential_method(N, func, path, save);
             break;
     }
-
-
 }
 
 
