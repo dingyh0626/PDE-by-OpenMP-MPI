@@ -96,7 +96,7 @@ void paralleled_method(int N, double(*func)(double, double), const char *path, i
         if (my_rank % 2) {
             a = my_rank != num_procs - 1;
             dm = -1;
-#pragma omp parallel for private(j, i, temp, dm_inner, d) shared(u, dm, f)
+#pragma omp parallel for private(j, i, temp, dm_inner, d) shared(u, dm, f, a, N, strip_size, h)
             for (j = 1; j < strip_size + a; j += 2) {
                 dm_inner = -1;
                 for (i = 1; i < N - 1; i++) {
@@ -115,7 +115,7 @@ void paralleled_method(int N, double(*func)(double, double), const char *path, i
                 omp_unset_lock(&dmax_lock);
             }
 
-#pragma omp parallel for private(j, i, temp, dm_inner, d) shared(u, dm, f)
+#pragma omp parallel for private(j, i, temp, dm_inner, d) shared(u, dm, f, a, N, strip_size, h)
             for (j = 2; j < strip_size + a; j += 2) {
                 dm_inner = -1;
                 for (i = 1; i < N - 1; i++) {
@@ -135,26 +135,21 @@ void paralleled_method(int N, double(*func)(double, double), const char *path, i
             }
 
             if (my_rank != num_procs - 1) {
-                MPI_Send(&u[(strip_size + a - 1) * N], N, MPI_DOUBLE, my_rank + 1, 0, MPI_COMM_WORLD);
-            }
-            MPI_Send(&u[N], N, MPI_DOUBLE, my_rank - 1, 1, MPI_COMM_WORLD);
-            if (my_rank != num_procs - 1) {
-                MPI_Recv(&u[(strip_size + a) * N], N, MPI_DOUBLE, my_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Sendrecv(&u[(strip_size + a - 1) * N], N, MPI_DOUBLE, my_rank + 1, 0, &u[(strip_size + a) * N], N, MPI_DOUBLE, my_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+//                MPI_Send(&u[(strip_size + a - 1) * N], N, MPI_DOUBLE, my_rank + 1, 0, MPI_COMM_WORLD);
+//                MPI_Recv(&u[(strip_size + a) * N], N, MPI_DOUBLE, my_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
             }
-            MPI_Recv(u, N, MPI_DOUBLE, my_rank - 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Sendrecv(&u[N], N, MPI_DOUBLE, my_rank - 1, 1, u, N, MPI_DOUBLE, my_rank - 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+//            MPI_Send(&u[N], N, MPI_DOUBLE, my_rank - 1, 1, MPI_COMM_WORLD);
+//            MPI_Recv(u, N, MPI_DOUBLE, my_rank - 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         } else {
             a = !(my_rank == 0 || my_rank == num_procs - 1);
             a = (my_rank == 0 && my_rank == num_procs - 1) ? -1 : a;
 
-            if (my_rank != 0) {
-                MPI_Recv(u, N, MPI_DOUBLE, my_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            }
-            if (my_rank != num_procs - 1) {
-                MPI_Recv(&u[(strip_size + a) * N], N, MPI_DOUBLE, my_rank + 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            }
+
             dm = -1;
-#pragma omp parallel for private(j, i, temp, dm_inner, d) shared(u, dm, f)
+#pragma omp parallel for private(j, i, temp, dm_inner, d) shared(u, dm, f, a, N, strip_size, h)
             for (j = 1; j < strip_size + a; j += 2) {
                 dm_inner = -1;
                 for (i = 1; i < N - 1; i++) {
@@ -172,7 +167,7 @@ void paralleled_method(int N, double(*func)(double, double), const char *path, i
                 }
                 omp_unset_lock(&dmax_lock);
             }
-#pragma omp parallel for private(j, i, temp, dm_inner, d) shared(u, dm, f)
+#pragma omp parallel for private(j, i, temp, dm_inner, d) shared(u, dm, f, a, N, strip_size, h)
             for (j = 2; j < strip_size + a; j += 2) {
                 dm_inner = -1;
                 for (i = 1; i < N - 1; i++) {
@@ -191,10 +186,17 @@ void paralleled_method(int N, double(*func)(double, double), const char *path, i
                 omp_unset_lock(&dmax_lock);
             }
             if (my_rank != 0) {
-                MPI_Send(&u[N], N, MPI_DOUBLE, my_rank - 1, 0, MPI_COMM_WORLD);
+                MPI_Sendrecv(&u[N], N, MPI_DOUBLE, my_rank - 1, 0, u, N, MPI_DOUBLE, my_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+//                MPI_Recv(u, N, MPI_DOUBLE, my_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             }
+//            if (my_rank != num_procs - 1) {
+//                MPI_Recv(&u[(strip_size + a) * N], N, MPI_DOUBLE, my_rank + 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+//            }
+//            if (my_rank != 0) {
+//                MPI_Send(&u[N], N, MPI_DOUBLE, my_rank - 1, 0, MPI_COMM_WORLD);
+//            }
             if (my_rank != num_procs - 1) {
-                MPI_Send(&u[(strip_size + a - 1) * N], N, MPI_DOUBLE, my_rank + 1, 1, MPI_COMM_WORLD);
+                MPI_Sendrecv(&u[(strip_size + a - 1) * N], N, MPI_DOUBLE, my_rank + 1, 1, &u[(strip_size + a) * N], N, MPI_DOUBLE, my_rank + 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             }
         }
 
@@ -256,7 +258,7 @@ void thread_method(int N, double(*func)(double, double), const char *path, int s
 
 
 
-#pragma omp parallel for private(j, i, temp, dm, d) shared(u, dmax, f)
+#pragma omp parallel for private(j, i, temp, dm, d) shared(u, dmax, f, N)
         for (j = 1; j < N - 1; j+=2) {
             dm = -1;
             for (i = 1; i < N - 1; i++) {
@@ -275,7 +277,7 @@ void thread_method(int N, double(*func)(double, double), const char *path, int s
             }
             omp_unset_lock(&dmax_lock);
         }
-#pragma omp parallel for private(j, i, temp, dm, d) shared(u, dmax, f)
+#pragma omp parallel for private(j, i, temp, dm, d) shared(u, dmax, f, N)
         for (j = 2; j < N - 1; j+=2) {
             dm = -1;
             for (i = 1; i < N - 1; i++) {
