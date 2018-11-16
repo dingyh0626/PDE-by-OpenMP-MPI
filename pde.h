@@ -163,6 +163,7 @@ void paralleled_method(int N, double(*func)(double, double), const char *path, i
     if (my_rank == 0) {
         printf("Duration: %.3fms\n", 1e3 * (MPI_Wtime() - tstart));
         printf("Iterations: %d\n", k);
+//        printf("%f", 1e3 * (MPI_Wtime() - tstart));
         if (save) {
             FILE *fp = fopen(path, "wb");
             fwrite(u, sizeof(double), N * N, fp);
